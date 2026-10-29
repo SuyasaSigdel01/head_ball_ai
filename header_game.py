@@ -1,5 +1,5 @@
 """
-header_hoops.py — webcam basketball, scored with your head
+header_game.py — webcam basketball, scored with your head (Header Hoops)
 
 A hoop sits in the upper court. A ball drops in. Head it through the rim.
 Every basket is a point. 60-second clock. Beat your best.
@@ -10,7 +10,7 @@ Requires (keep mediapipe pinned — 0.10.31+ dropped the legacy solutions API):
     pygame numpy
 
 Run:
-    python header_hoops.py
+    python header_game.py
 
 Controls:
     SPACE / R  start / restart
@@ -222,6 +222,37 @@ class Hoop:
                              (int(self.x), int(self.y + 34)), 1)
 
 
+def try_header(ball, head_pos, head_vel):
+    """Bounce the ball off a head if they touch. Returns True on a hit.
+
+    Shared by every player (webcam human now, bot later) so the physics are
+    identical for both. Cooldown is NOT checked here — the caller does that,
+    because each player keeps its own last_hit time.
+    """
+    # 1. distance between ball centre and head centre
+    dx, dy = ball.x - head_pos[0], ball.y - head_pos[1]
+    dist = math.hypot(dx, dy)
+
+    # 2. no contact, or ball is going up (already headed) -> no hit
+    if dist >= BALL_R + HEAD_R or ball.vy <= 0:
+        return False
+
+    # 3. sideways aim from off-centre contact, power from upward head speed
+    offset = max(-1.0, min(1.0, dx / HEAD_R))
+    ball.vx = offset * STEER
+    bonus = min(max(-head_vel[1], 0.0) * POWER_GAIN, MAX_POWER_BONUS)
+    ball.vy = -(BASE_BOUNCE + bonus)
+
+    # 4. push the ball just outside the head so they don't overlap next frame
+    d = max(dist, 1e-3)
+    ball.x = head_pos[0] + dx / d * (BALL_R + HEAD_R + 1)
+    ball.y = head_pos[1] + dy / d * (BALL_R + HEAD_R + 1)
+
+    # 5. mark it so a basket counts
+    ball.headed = True
+    return True
+
+
 def spawn_ball(W, H, hoop):
     """Drop the ball on the opposite side from the hoop so it must be headed in."""
     x = W * random.uniform(0.15, 0.35) if hoop.x > W / 2 else W * random.uniform(0.65, 0.85)
@@ -294,22 +325,11 @@ def main():
                 ball.step(dt, W)
                 hoop.collide(ball)
 
-                # header contact
-                dx, dy = ball.x - head[0], ball.y - head[1]
-                dist = math.hypot(dx, dy)
+                # header contact — physics live in try_header(), cooldown here
                 now = time.perf_counter()
-                if (dist < BALL_R + HEAD_R and ball.vy > 0
-                        and now - last_hit > HIT_COOLDOWN):
+                if (now - last_hit > HIT_COOLDOWN
+                        and try_header(ball, head, tracker.velocity())):
                     last_hit = now
-                    _, hvy = tracker.velocity()
-                    offset = max(-1.0, min(1.0, dx / HEAD_R))
-                    ball.vx = offset * STEER
-                    bonus = min(max(-hvy, 0.0) * POWER_GAIN, MAX_POWER_BONUS)
-                    ball.vy = -(BASE_BOUNCE + bonus)
-                    d = max(dist, 1e-3)
-                    ball.x = head[0] + dx / d * (BALL_R + HEAD_R + 1)
-                    ball.y = head[1] + dy / d * (BALL_R + HEAD_R + 1)
-                    ball.headed = True
 
                 if hoop.scored(ball):
                     score += 1
