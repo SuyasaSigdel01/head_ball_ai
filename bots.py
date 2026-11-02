@@ -1,0 +1,159 @@
+"""
+bots.py — the bots that play on the RIGHT half of pass_game.py.
+
+Both bots share the same "body": same speed limit, same header power (nod),
+same try_header() physics. Only the "brain" differs, so comparing them is fair.
+
+  RuleBot — hand-written rules: simulate the ball, go where it lands, aim at you.
+  MLBot   — imitation learning: a model trained on YOUR moves decides where to go.
+"""
+
+import math
+
+import pygame
+
+from header_game import (
+    Ball, GRAVITY, BALL_R, HEAD_R, BASE_BOUNCE, POWER_GAIN, MAX_POWER_BONUS, STEER,
+    WHITE, BLACK,
+)
+
+# ------------------------------------------------------------------ shared body
+BOT_FY = 0.55              # rule bot head height (fraction of screen height)
+BOT_HOME_FX = 0.75         # where the rule bot waits when the ball is on your side
+BOT_SPEED = 750.0          # max head speed, px/s (both bots)
+BOT_NOD = 600.0            # fake upward head speed at contact -> header power (both bots)
+BOT_BONUS = min(BOT_NOD * POWER_GAIN, MAX_POWER_BONUS)
+SIM_DT = 1.0 / 120.0       # rule bot's "imagine the future" time step
+SIM_HORIZON = 3.0          # seconds ahead the rule bot looks
+
+RULE_COL = (70, 130, 255)
+ML_COL = (150, 90, 230)
+ML_MODEL_PATH = "models/bc_mlp.pt"
+
+
+class RuleBot:
+    """Baseline bot: predict where the ball comes down, go there, aim at the human."""
+
+    name = "RULE"
+
+    def __init__(self, W, H):
+        self.W, self.H = W, H
+        self.mid = W / 2
+        self.x = W * BOT_HOME_FX
+        self.y = H * BOT_FY
+        self.last_hit = 0.0
+        self.color = RULE_COL
+
+    # -- 1. look into the future -------------------------------------------
+    def predict_landing(self, ball, contact_y):
+        """Copy the ball, step it forward with the SAME physics, and return the
+        x where it falls through contact_y. None if it doesn't within the horizon."""
+        sim = Ball(ball.x, ball.y)
+        sim.vx, sim.vy = ball.vx, ball.vy
+        for _ in range(int(SIM_HORIZON / SIM_DT)):
+            sim.step(SIM_DT, self.W)
+            if sim.vy > 0 and sim.y >= contact_y:
+                return sim.x
+        return None
+
+    # -- 2. decide how to hit it -------------------------------------------
+    def aim_offset(self, from_x, human_head):
+        """How off-centre (-1..1, same meaning as in try_header) to hit the ball
+        so it comes down on the human's head. Negative = send it left."""
+        tx, ty = human_head if human_head else (self.W * 0.25, self.y)
+        reach = BALL_R + HEAD_R
+        y0 = self.y - reach * 0.9            # height where the ball leaves our head
+        y1 = ty - reach * 0.9                # height where the human will meet it
+        vy0 = -(BASE_BOUNCE + BOT_BONUS)     # launch speed (up is negative)
+        # solve y0 + vy0*t + 0.5*g*t^2 = y1, take the later (falling) root
+        disc = vy0 * vy0 - 2 * GRAVITY * (y0 - y1)
+        t = (-vy0 + math.sqrt(max(disc, 0.0))) / GRAVITY
+        vx_needed = (tx - from_x) / t
+        return max(-1.0, min(-0.15, vx_needed / STEER))
+
+    # -- 3. move ------------------------------------------------------------
+    def update(self, dt, ball, human_head):
+        reach = BALL_R + HEAD_R
+        target = self.W * BOT_HOME_FX
+
+        land_x = self.predict_landing(ball, self.y - reach * 0.9)
+        if land_x is not None and land_x > self.mid:
+            offset = self.aim_offset(land_x, human_head)
+            # try_header uses dx = ball.x - head.x = offset * HEAD_R
+            # so stand at head.x = ball.x - offset * HEAD_R
+            contact_dy = math.sqrt(reach ** 2 - (offset * HEAD_R) ** 2)
+            land_x2 = self.predict_landing(ball, self.y - contact_dy)
+            if land_x2 is not None:
+                land_x = land_x2
+            target = land_x - offset * HEAD_R
+
+        target = max(self.mid + HEAD_R * 0.5, min(self.W - HEAD_R, target))
+        step = BOT_SPEED * dt
+        self.x += max(-step, min(step, target - self.x))
+        return self.x, self.y
+
+    def velocity(self):
+        # the bot "nods" upward at contact so its header has enough power
+        return 0.0, -BOT_NOD
+
+    def draw(self, surf, ball):
+        cx, cy = int(self.x), int(self.y)
+        pygame.draw.circle(surf, self.color, (cx, cy), HEAD_R)
+        pygame.draw.circle(surf, WHITE, (cx, cy), HEAD_R, 3)
+        # eyes follow the ball
+        ang = math.atan2(ball.y - cy, ball.x - cx)
+        for ex in (cx - 22, cx + 22):
+            ey = cy - 12
+            pygame.draw.circle(surf, WHITE, (ex, ey), 12)
+            pygame.draw.circle(surf, BLACK,
+                               (int(ex + 5 * math.cos(ang)), int(ey + 5 * math.sin(ang))), 5)
+        pygame.draw.arc(surf, WHITE, (cx - 22, cy + 5, 44, 26), math.pi * 1.1, math.pi * 1.9, 3)
+
+
+class MLBot(RuleBot):
+    """Imitation-learning bot. Same body as RuleBot (speed limit, nod power,
+    drawing); only update() — the brain — is replaced by the trained model."""
+
+    name = "ML"
+
+    def __init__(self, W, H, model_path=ML_MODEL_PATH):
+        super().__init__(W, H)
+        # imported here so the game still runs with RuleBot if torch/model is missing
+        import torch
+        from bc_model import load_policy
+        from features import make_features
+
+        self.torch = torch
+        self.make_features = make_features
+        self.model, self.info = load_policy(model_path)
+        self.color = ML_COL
+        # start at the height YOU usually played at (stored in the model's normaliser)
+        i = self.info["features"].index("head_y")
+        self.y = float(self.model.x_mean[i]) * H
+
+    def update(self, dt, ball, human_head):
+        W, H = self.W, self.H
+        hx, hy = human_head if human_head else (W * 0.25, self.y)
+
+        # 1. MIRROR the world: the model was trained as the LEFT player,
+        #    so x -> 1 - x and vx -> -vx. The human becomes the "partner" on the right.
+        feats = self.make_features(
+            1 - ball.x / W, ball.y / H, -ball.vx / W, ball.vy / H,   # ball
+            1 - self.x / W, self.y / H,                              # me
+            1 - hx / W, hy / H,                                      # partner (you)
+        )
+
+        # 2. ASK the model: "what would Shreeya do here?"
+        with self.torch.no_grad():
+            act = self.model(self.torch.from_numpy(feats).unsqueeze(0))[0].numpy()
+
+        # 3. UN-MIRROR the answer and convert screens/s -> pixels/s
+        vx = -float(act[0]) * W
+        vy = float(act[1]) * H
+
+        # 4. same body limits as the rule bot
+        vx = max(-BOT_SPEED, min(BOT_SPEED, vx))
+        vy = max(-BOT_SPEED, min(BOT_SPEED, vy))
+        self.x = max(self.mid + HEAD_R * 0.5, min(W - HEAD_R, self.x + vx * dt))
+        self.y = max(H * 0.25, min(H * 0.8, self.y + vy * dt))
+        return self.x, self.y
