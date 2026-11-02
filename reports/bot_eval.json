@@ -1,0 +1,33 @@
+{
+  "rallies": 200,
+  "seed": 0,
+  "results": {
+    "STILL": {
+      "rallies": 200,
+      "avg_rally": 0.41,
+      "median_rally": 0.0,
+      "hit_cap_pct": 0.0,
+      "bot_reach_pct": 28.3,
+      "pass_quality_pct": 90.6,
+      "seconds": 3.1
+    },
+    "RULE": {
+      "rallies": 200,
+      "avg_rally": 7.71,
+      "median_rally": 5.0,
+      "hit_cap_pct": 4.5,
+      "bot_reach_pct": 100.0,
+      "pass_quality_pct": 93.4,
+      "seconds": 90.2
+    },
+    "ML": {
+      "rallies": 200,
+      "avg_rally": 0,
+      "median_rally": 0.0,
+      "hit_cap_pct": 0.0,
+      "bot_reach_pct": 0.0,
+      "pass_quality_pct": 0.0,
+      "seconds": 33.4
+    }
+  }
+}
