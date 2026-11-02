@@ -1,17 +1,17 @@
 """
-prepare_data.py — raw gameplay CSVs -> clean training set for imitation learning.
+prepare.py — raw gameplay CSVs -> clean training set for imitation learning.
 
   1. load every data/raw/session_*.csv
   2. print a per-session summary + save reports/data_overview.png
   3. build (state -> action) pairs:
-        state  = features at frame t            (features.py)
-        action = your head velocity t -> t+1    (what you did NEXT)
-  4. clean: drop pauses/gaps, tracking-jitter spikes, and the second right
-     before each of YOUR drops (we want the bot to copy success, not mistakes)
+        state  = ball + partner at frame t                      (features.py)
+        action = where YOUR head was LOOKAHEAD seconds later    (target position)
+  4. clean: drop windows with a pause/gap, tracking-jitter jumps, and the second
+     right before each of YOUR drops (copy success, not mistakes)
   5. save data/processed/bc_dataset.npz  (X, y, session)
 
 Run:
-    python prepare_data.py
+    python prepare.py
 """
 
 import glob
@@ -23,7 +23,7 @@ import matplotlib
 matplotlib.use("Agg")                 # save PNGs, no window needed
 import matplotlib.pyplot as plt
 
-from features import FEATURES, ACTIONS, make_features
+from features import FEATURES, ACTIONS, LOOKAHEAD, make_features
 
 RAW_GLOB = os.path.join("data", "raw", "session_*.csv")
 OUT_PATH = os.path.join("data", "processed", "bc_dataset.npz")
@@ -110,9 +110,11 @@ def plot_overview(df, clean):
 
     # (b) the action the bot will learn
     ax = axes[1]
-    style(ax, "Your sideways head speed (training frames)")
-    ax.hist(clean.act_vx, bins=60, color=BLUE, edgecolor=SURFACE, linewidth=0.5)
-    ax.set_xlabel("act_vx (screens per second, + = right)", color=INK_2)
+    style(ax, f"Where your head went {LOOKAHEAD}s later (training frames)")
+    ax.hist(clean.target_x, bins=50, range=(0, 0.6), color=BLUE,
+            edgecolor=SURFACE, linewidth=0.5)
+    ax.axvline(0.5, color=INK_2, linestyle="--", linewidth=1)
+    ax.set_xlabel("target_x (fraction of screen)", color=INK_2)
     ax.set_ylabel("frames", color=INK_2)
 
     # (c) how long rallies lasted
@@ -134,32 +136,52 @@ def plot_overview(df, clean):
 # ------------------------------------------------------------------ 3+4. pairs
 def build_pairs(df):
     df = df.copy()
-    g = df.groupby("session")
-    gap = g["t"].shift(-1) - df["t"]                       # never crosses sessions
-    df["act_vx"] = (g["head_x"].shift(-1) - df["head_x"]) / gap
-    df["act_vy"] = (g["head_y"].shift(-1) - df["head_y"]) / gap
+    n = len(df)
+    t_all = df.t.to_numpy()
+    hx_all, hy_all = df.head_x.to_numpy(), df.head_y.to_numpy()
 
-    ok_gap = gap.notna() & (gap > 0) & (gap <= MAX_GAP)
-    ok_speed = np.hypot(df.act_vx, df.act_vy) <= MAX_SPEED
+    target_x = np.full(n, np.nan)
+    target_y = np.full(n, np.nan)
+    ok_window = np.zeros(n, dtype=bool)
+    ok_speed = np.zeros(n, dtype=bool)
+
+    for _, idx in df.groupby("session").indices.items():     # never crosses sessions
+        t, hx, hy = t_all[idx], hx_all[idx], hy_all[idx]
+        pauses = np.cumsum(np.diff(t, prepend=t[0]) > MAX_GAP)  # pauses seen so far
+        j = np.searchsorted(t, t + LOOKAHEAD)                   # row LOOKAHEAD s later
+        has_future = j < len(t)
+        j = np.minimum(j, len(t) - 1)
+        no_pause = pauses[j] == pauses                          # no gap inside the window
+        good = has_future & no_pause
+
+        span = np.maximum(t[j] - t, 1e-6)
+        speed = np.hypot(hx[j] - hx, hy[j] - hy) / span
+
+        target_x[idx] = np.where(good, hx[j], np.nan)
+        target_y[idx] = np.where(good, hy[j], np.nan)
+        ok_window[idx] = good
+        ok_speed[idx] = speed <= MAX_SPEED
+
+    df["target_x"], df["target_y"] = target_x, target_y
 
     # frames in the FAIL_WINDOW seconds before each drop on YOUR side
-    before_fail = np.zeros(len(df), dtype=bool)
+    before_fail = np.zeros(n, dtype=bool)
     your_drops = df[(df.dropped == 1) & (df.ball_x < 0.5)]
-    sess, t = df.session.to_numpy(), df.t.to_numpy()
+    sess = df.session.to_numpy()
     for s, t_drop in zip(your_drops.session, your_drops.t):
-        before_fail |= (sess == s) & (t > t_drop - FAIL_WINDOW) & (t <= t_drop)
+        before_fail |= (sess == s) & (t_all > t_drop - FAIL_WINDOW) & (t_all <= t_drop)
 
-    keep = ok_gap & ok_speed & ~before_fail
+    keep = ok_window & ok_speed & ~before_fail
     print("\n=== cleaning ===")
-    print(f"all frames            {len(df)}")
-    print(f"  - gap / pause       {int((~ok_gap).sum())}")
-    print(f"  - jitter spikes     {int((ok_gap & ~ok_speed).sum())}")
-    print(f"  - before your drop  {int((ok_gap & ok_speed & before_fail).sum())}")
+    print(f"all frames            {n}")
+    print(f"  - gap / pause / end {int((~ok_window).sum())}")
+    print(f"  - jitter jumps      {int((ok_window & ~ok_speed).sum())}")
+    print(f"  - before your drop  {int((ok_window & ok_speed & before_fail).sum())}")
     print(f"kept for training     {int(keep.sum())}")
 
     clean = df[keep]
     X = make_features(clean.ball_x, clean.ball_y, clean.ball_vx, clean.ball_vy,
-                      clean.head_x, clean.head_y, clean.bot_x, clean.bot_y)
+                      clean.bot_x, clean.bot_y)
     y = clean[ACTIONS].to_numpy(dtype=np.float32)
     return X, y, clean.session.to_numpy(), clean
 
@@ -180,4 +202,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

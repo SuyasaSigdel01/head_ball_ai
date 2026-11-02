@@ -95,6 +95,7 @@ def run_rally(bot, human, rng, max_time=90.0, max_passes=30):
                 out["passes"] += 1
                 out["human_hits"] += 1
             last_touch = "human"
+            human.new_approach()        # fresh aim error, or a bad aim could repeat forever
 
         bpos = bot.update(dt, ball, hpos)
         if t - bot.last_hit > HIT_COOLDOWN and try_header(ball, bpos, bot.velocity()):
