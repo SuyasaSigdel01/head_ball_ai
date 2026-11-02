@@ -1,5 +1,5 @@
 """
-pass_game.py — co-op heading rally: you (webcam) vs-with a bot
+pass_game.py — co-op heading rally: you (webcam) + a bot
 
 Stand on the LEFT half of the camera. The bot lives on the RIGHT half.
 Head the ball across the middle line, the bot heads it back to you.
@@ -10,6 +10,9 @@ with the same physics as the game, runs to where the ball will come down,
 and picks how off-centre to hit it so the pass lands on your head.
 Later ML bots (imitation learning, RL) are compared against this baseline.
 
+Every frame you play is recorded to data/raw/ (see data_logger.py) — that's
+the training data for the imitation-learning bot.
+
 Reuses Ball / HeadTracker / try_header from header_game.py (same folder).
 
 Run:
@@ -17,6 +20,7 @@ Run:
 
 Controls:
     SPACE / R  start / restart
+    L          pause / resume recording
     ESC / Q    quit
 """
 
@@ -34,6 +38,7 @@ from header_game import (
     HIT_COOLDOWN, MAX_DT,
     WHITE, BLACK, GREEN, RED, YELLOW, ORANGE,
 )
+from data_logger import GameLogger
 
 
 # ------------------------------------------------------------------ bot tunables
@@ -163,6 +168,7 @@ def main():
 
     tracker = HeadTracker()
     bot = RuleBot(W, H)
+    logger = GameLogger(W, H)
     ball = spawn_on_human_side(W, H)
     state = "WAIT"
     rally, best = 0, 0
@@ -180,6 +186,8 @@ def main():
             elif e.type == pygame.KEYDOWN:
                 if e.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
+                elif e.key == pygame.K_l:
+                    logger.enabled = not logger.enabled
                 elif e.key in (pygame.K_SPACE, pygame.K_r):
                     rally, last_touch = 0, None
                     ball = spawn_on_human_side(W, H)
@@ -201,11 +209,13 @@ def main():
             else:
                 ball.step(dt, W)
                 now = time.perf_counter()
+                human_hit = bot_hit = False
 
                 # human — only counts while on the left half
                 if (head[0] < mid and now - human_last_hit > HIT_COOLDOWN
                         and try_header(ball, head, tracker.velocity())):
                     human_last_hit = now
+                    human_hit = True
                     if last_touch == "bot":
                         rally += 1
                     last_touch = "human"
@@ -215,13 +225,19 @@ def main():
                 if (now - bot.last_hit > HIT_COOLDOWN
                         and try_header(ball, bot_pos, bot.velocity())):
                     bot.last_hit = now
+                    bot_hit = True
                     if last_touch == "human":
                         rally += 1
                     last_touch = "bot"
 
                 best = max(best, rally)
+                dropped = ball.y - BALL_R > H
 
-                if ball.y - BALL_R > H:          # dropped
+                # record this frame BEFORE respawning, so the drop is in the data
+                logger.log(dt, ball, head, tracker.velocity(), bot_pos,
+                           human_hit, bot_hit, dropped, rally)
+
+                if dropped:
                     who = "YOU" if ball.x < mid else "BOT"
                     msg, msg_until = f"{who} DROPPED IT  -  rally {rally}", now + 1.5
                     rally, last_touch = 0, None
@@ -241,6 +257,11 @@ def main():
         draw_text(screen, font, f"BEST {best}", (16, 48), YELLOW)
         draw_text(screen, font, "YOU", (W // 4, 20), WHITE, center=True)
         draw_text(screen, font, "BOT", (3 * W // 4, 20), BOT_COL, center=True)
+        if logger.enabled:
+            pygame.draw.circle(screen, RED, (W - 200, 64), 9)
+            draw_text(screen, font, f"REC {logger.rows}", (W - 182, 48), RED)
+        else:
+            draw_text(screen, font, "REC OFF (L)", (W - 210, 48), WHITE)
         if time.perf_counter() < msg_until:
             draw_text(screen, font, msg, (W // 2, H // 2 + 80), RED, center=True)
 
@@ -251,6 +272,8 @@ def main():
 
         pygame.display.flip()
 
+    path, rows = logger.close()
+    print(f"saved {rows} frames -> {path}" if rows else "nothing recorded")
     cap.release()
     pygame.quit()
 
