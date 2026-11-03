@@ -6,9 +6,11 @@ same try_header() physics. Only the "brain" differs, so comparing them is fair.
 
   RuleBot — hand-written rules: simulate the ball, go where it lands, aim at you.
   MLBot   — imitation learning: a model trained on YOUR moves decides where to go.
+  RLBot   — reinforcement learning: a PPO policy that learned by playing sim.py.
 """
 
 import math
+import os
 
 import pygame
 
@@ -28,7 +30,9 @@ SIM_HORIZON = 3.0          # seconds ahead the rule bot looks
 
 RULE_COL = (70, 130, 255)
 ML_COL = (150, 90, 230)
+RL_COL = (20, 170, 170)
 ML_MODEL_PATH = "models/bc_mlp.pt"
+RL_MODEL_PATH = "models/rl_ppo.zip"
 
 
 class RuleBot:
@@ -165,4 +169,36 @@ class MLBot(RuleBot):
         step = BOT_SPEED * dt
         self.x += max(-step, min(step, target_x - self.x))
         self.y += max(-step, min(step, target_y - self.y))
+        return self.x, self.y
+
+
+class RLBot(RuleBot):
+    """Reinforcement-learning bot: a PPO policy trained by train_rl.py, playing
+    hundreds of thousands of rallies in sim.py. Same body as the other bots;
+    the brain is the policy network.
+
+    Note the "sim-to-real gap": it learned against SimHuman, not a real person,
+    so it may do worse with you than its eval_bots.py score suggests."""
+
+    name = "RL"
+
+    def __init__(self, W, H, model_path=RL_MODEL_PATH):
+        super().__init__(W, H)
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"{model_path} not found - run train_rl.py")
+        # imported here so the game still runs if stable-baselines3 isn't installed
+        from stable_baselines3 import PPO
+        from rl_env import make_obs, apply_action
+
+        self.policy = PPO.load(model_path, device="cpu")
+        self.make_obs = make_obs
+        self.apply_action = apply_action
+        self.color = RL_COL
+
+    def update(self, dt, ball, human_head):
+        hx, hy = human_head if human_head else (self.W * 0.25, self.H * 0.45)
+        # exactly the observation/action code the env used in training (rl_env.py)
+        obs = self.make_obs(ball, self.x, self.y, hx, hy, self.W, self.H)
+        action, _ = self.policy.predict(obs, deterministic=True)
+        self.x, self.y = self.apply_action(self.x, self.y, action, dt, self.W, self.H)
         return self.x, self.y

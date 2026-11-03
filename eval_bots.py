@@ -7,6 +7,8 @@ so any difference comes from the bot's brain only.
   STILL — never moves (the floor: any real bot must beat this)
   RULE  — hand-written baseline
   ML    — imitation-learning model (models/bc_mlp.pt), skipped if not available
+  RL    — PPO policy (models/rl_ppo.zip), skipped if not available
+          (careful: RL trained in this same simulator, so this is its home ground)
 
 Run:
     python eval_bots.py
@@ -22,8 +24,10 @@ import random
 import statistics
 import time
 
-from bots import RuleBot, MLBot
+from bots import RuleBot, MLBot, RLBot
 from sim import SimHuman, run_rally, W, H
+
+LOAD_ERRORS = (ImportError, OSError, ValueError, RuntimeError)
 
 OUT_PATH = os.path.join("reports", "bot_eval.json")
 
@@ -71,10 +75,11 @@ def main():
     args = ap.parse_args()
 
     bots = [StillBot(W, H), RuleBot(W, H)]
-    try:
-        bots.append(MLBot(W, H))
-    except (ImportError, FileNotFoundError, OSError) as err:
-        print(f"(ML bot skipped: {err})")
+    for cls in (MLBot, RLBot):
+        try:
+            bots.append(cls(W, H))
+        except LOAD_ERRORS as err:
+            print(f"({cls.name} bot skipped: {err})")
 
     results = {}
     for bot in bots:

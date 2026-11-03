@@ -5,9 +5,11 @@ Stand on the LEFT half of the camera. The bot lives on the RIGHT half.
 Head the ball across the middle line, the bot heads it back to you.
 Every completed pass adds 1 to the rally. Ball hits the floor -> rally over.
 
-Two bots (see bots.py), switch with B:
+Three bots (see bots.py), switch with B:
   RULE — hand-written baseline
   ML   — imitation-learning model trained on your own play (models/bc_mlp.pt)
+  RL   — reinforcement-learning policy trained in the simulator (models/rl_ppo.zip)
+Bots whose model isn't trained yet are skipped.
 The bottom of the screen shows average rally per bot, so you can compare them.
 
 Every frame you play is recorded to data/raw/ (see data_logger.py) — that's
@@ -18,7 +20,7 @@ Run:
 
 Controls:
     SPACE / R  start / restart
-    B          switch bot (RULE <-> ML)
+    B          switch bot (RULE -> ML -> RL)
     L          pause / resume recording
     ESC / Q    quit
 """
@@ -36,7 +38,11 @@ from header_game import (
     WHITE, GREEN, RED, YELLOW, ORANGE,
 )
 from data_logger import GameLogger
-from bots import RuleBot, MLBot
+from bots import RuleBot, MLBot, RLBot
+
+BOT_ORDER = ["RULE", "ML", "RL"]
+BOT_CLASSES = {"RULE": RuleBot, "ML": MLBot, "RL": RLBot}
+LOAD_ERRORS = (ImportError, OSError, ValueError, RuntimeError)
 
 
 def spawn_on_human_side(W, H):
@@ -52,13 +58,21 @@ def draw_midline(surf, W, H):
 
 
 def make_bot(kind, W, H):
-    """Return a bot, or None if the ML bot can't load (no torch / no model yet)."""
-    if kind == "ML":
-        try:
-            return MLBot(W, H)
-        except (ImportError, FileNotFoundError, OSError) as err:
-            print(f"ML bot unavailable: {err}")
-            return None
+    """Return a bot, or None if its model can't load (not trained / library missing)."""
+    try:
+        return BOT_CLASSES[kind](W, H)
+    except LOAD_ERRORS as err:
+        print(f"{kind} bot unavailable: {err}")
+        return None
+
+
+def next_bot(current, W, H):
+    """The next bot in BOT_ORDER that actually loads (RULE always does)."""
+    i = BOT_ORDER.index(current)
+    for k in range(1, len(BOT_ORDER) + 1):
+        bot = make_bot(BOT_ORDER[(i + k) % len(BOT_ORDER)], W, H)
+        if bot is not None:
+            return bot
     return RuleBot(W, H)
 
 
@@ -92,7 +106,7 @@ def main():
     last_touch = None          # "human" / "bot" — who headed it last
     human_last_hit = 0.0
     msg, msg_until = "", 0.0
-    rallies = {"RULE": [], "ML": []}   # finished rally lengths per bot
+    rallies = {name: [] for name in BOT_ORDER}   # finished rally lengths per bot
 
     running = True
     while running:
@@ -107,9 +121,9 @@ def main():
                 elif e.key == pygame.K_l:
                     logger.enabled = not logger.enabled
                 elif e.key == pygame.K_b:
-                    new = make_bot("ML" if bot.name == "RULE" else "RULE", W, H)
-                    if new is None:
-                        msg, msg_until = "NO ML MODEL - run train_bc.py", time.perf_counter() + 2
+                    new = next_bot(bot.name, W, H)
+                    if new.name == bot.name:
+                        msg, msg_until = "NO ML/RL MODELS YET - train them first", time.perf_counter() + 2
                     else:
                         bot = new
                         rally, last_touch = 0, None          # fresh rally for a fair count
