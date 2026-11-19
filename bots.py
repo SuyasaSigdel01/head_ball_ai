@@ -41,7 +41,7 @@ class RuleBot:
 
     name = "RULE"
 
-    def __init__(self, W, H, difficulty=0.7):
+    def __init__(self, W, H, difficulty=0.0):
         self.difficulty = difficulty
         self.aim_shift = None     # picked once per pass, so the bot doesn't jitter
         self.W, self.H = W, H
