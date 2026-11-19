@@ -180,6 +180,7 @@ def main():
                 if rally != prev_rally and rally > 0 and rally % RALLY_TARGET == 0:
                     difficulty = min(1.0, difficulty + 0.1)
                     bot.difficulty = difficulty
+                    msg, msg_until = f"LEVEL UP!  DIFF {int(difficulty * 100)}%", now + 1.5
                 prev_rally = rally
                 dropped = ball.y - BALL_R > H
 
