@@ -28,7 +28,7 @@ BOT_NOD = 600.0            # fake upward head speed at contact -> header power (
 BOT_BONUS = min(BOT_NOD * POWER_GAIN, MAX_POWER_BONUS)
 SIM_DT = 1.0 / 120.0       # rule bot's "imagine the future" time step
 SIM_HORIZON = 3.0          # seconds ahead the rule bot looks
-
+MAX_AIM_SHIFT = 160.0      # at 100% difficulty, bot aims this many px away from your head
 RULE_COL = (70, 130, 255)
 ML_COL = (150, 90, 230)
 RL_COL = (20, 170, 170)
@@ -43,6 +43,7 @@ class RuleBot:
 
     def __init__(self, W, H, difficulty=0.7):
         self.difficulty = difficulty
+        self.aim_shift = None     # picked once per pass, so the bot doesn't jitter
         self.W, self.H = W, H
         self.mid = W / 2
         self.x = W * BOT_HOME_FX
@@ -67,6 +68,10 @@ class RuleBot:
         """How off-centre (-1..1, same meaning as in try_header) to hit the ball
         so it comes down on the human's head. Negative = send it left."""
         tx, ty = human_head if human_head else (self.W * 0.25, self.y)
+        # adaptive difficulty: aim AWAY from your head (picked once per pass)
+        if self.aim_shift is None:
+            self.aim_shift = random.choice((-1, 1)) * self.difficulty * MAX_AIM_SHIFT
+        tx = max(HEAD_R, min(self.mid - HEAD_R, tx + self.aim_shift))
         reach = BALL_R + HEAD_R
         y0 = self.y - reach * 0.9            # height where the ball leaves our head
         y1 = ty - reach * 0.9                # height where the human will meet it
@@ -75,13 +80,15 @@ class RuleBot:
         disc = vy0 * vy0 - 2 * GRAVITY * (y0 - y1)
         t = (-vy0 + math.sqrt(max(disc, 0.0))) / GRAVITY
         vx_needed = (tx - from_x) / t
-        noise = (1.0 - self.difficulty) * random.uniform(-0.4, 0.4)
-        return max(-1.0, min(1.0, vx_needed / STEER + noise))
+        return max(-1.0, min(-0.15, vx_needed / STEER))
 
     # -- 3. move ------------------------------------------------------------
     def update(self, dt, ball, human_head):
         reach = BALL_R + HEAD_R
         target = self.W * BOT_HOME_FX
+        # ball is on your side -> next pass gets a fresh aim shift
+        if ball.x < self.mid:
+            self.aim_shift = None
 
         land_x = self.predict_landing(ball, self.y - reach * 0.9)
         if land_x is not None and land_x > self.mid:
@@ -95,7 +102,7 @@ class RuleBot:
             target = land_x - offset * HEAD_R
 
         target = max(self.mid + HEAD_R * 0.5, min(self.W - HEAD_R, target))
-        step = BOT_SPEED * self.difficulty * dt
+        step = BOT_SPEED * dt
         self.x += max(-step, min(step, target - self.x))
         return self.x, self.y
 

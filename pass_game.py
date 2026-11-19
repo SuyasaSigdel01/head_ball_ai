@@ -108,7 +108,9 @@ def main():
     human_last_hit = 0.0
     msg, msg_until = "", 0.0
     rallies = {name: [] for name in BOT_ORDER}   # finished rally lengths per bot
-    difficulty = 0.7          # starts medium, adjusts after each rally
+    difficulty = 0.3          # start easy, adjusts after each rally
+    bot.difficulty = difficulty
+    prev_rally = 0            # to spot the exact frame rally reaches 5, 10, 15...
 
     running = True
     while running:
@@ -127,7 +129,7 @@ def main():
                     if new.name == bot.name:
                         msg, msg_until = "NO ML/RL MODELS YET - train them first", time.perf_counter() + 2
                     else:
-                        bot = new
+                        bot.difficulty = difficulty
                         rally, last_touch = 0, None          # fresh rally for a fair count
                         ball = spawn_on_human_side(W, H)
                         msg, msg_until = f"{bot.name} BOT", time.perf_counter() + 1.2
@@ -174,20 +176,25 @@ def main():
                     last_touch = "bot"
 
                 best = max(best, rally)
+                # rally just reached 5, 10, 15... -> harder right away
+                if rally != prev_rally and rally > 0 and rally % RALLY_TARGET == 0:
+                    difficulty = min(1.0, difficulty + 0.1)
+                    bot.difficulty = difficulty
+                prev_rally = rally
                 dropped = ball.y - BALL_R > H
 
                 # record this frame BEFORE respawning, so the drop is in the data
                 logger.log(dt, ball, head, tracker.velocity(), bot_pos,
                            human_hit, bot_hit, dropped, rally)
-
                 if dropped:
                     who = "YOU" if ball.x < mid else "BOT"
                     msg, msg_until = f"{who} DROPPED IT  -  rally {rally}", now + 1.5
-                    if rally >= RALLY_TARGET:
-                        difficulty = min(1.0, difficulty + 0.05)
-                    else:
-                        difficulty = max(0.2, difficulty - 0.05)
-                    bot.difficulty = difficulty
+                    if who == "YOU":
+                        difficulty = max(0.0, difficulty - 0.1)   # you dropped it -> easier
+                        bot.difficulty = difficulty
+                    rallies[bot.name].append(rally)
+                    rally, last_touch = 0, None
+                    ball = spawn_on_human_side(W, H)
                     rallies[bot.name].append(rally)
                     rally, last_touch = 0, None
                     ball = spawn_on_human_side(W, H)
