@@ -22,7 +22,7 @@ The point of the project is the comparison. Every bot has the same body (speed l
 | STILL (never moves, the floor) | 0.80 | 0 | 41.7% | 86.4% |
 | RULE (hand-written physics) | 15.32 | 15 | 99.7% | 92.6% |
 | ML (imitation, v2) | **TODO** | **TODO** | **TODO** | **TODO** |
-| RL (PPO) | **TODO** | **TODO** | **TODO** | **TODO** |
+| RL (PPO) | 8.58 | 5.5 | 98.8% | 91.5% |
 
 - **Bot reach**: balls the partner sent over that the bot got to.
 - **Pass quality**: bot passes the partner could head back.
@@ -74,6 +74,11 @@ Each frame it copies the ball, simulates its future with the game's own physics,
 | Imitation learning | Reinforcement learning |
 |---|---|
 | ![bc](reports/bc_training.png) | ![rl](reports/rl_training.png) |
+
+### 4. Adaptive difficulty (pass mode, rule bot)
+Difficulty (0-100%) sets how far from your head the bot aims its passes: at 0% the ball lands on your head, at 100% about 160 px away, so you have to move for it. It goes up 10% each time the rally reaches 5, 10, 15..., and down 10% when *you* drop the ball. A bot drop changes nothing.
+
+The bot always moves at full speed. A first version slowed the bot down instead, which made it drop more, which lowered the difficulty further: a death spiral.
 
 ---
 
@@ -138,7 +143,6 @@ Controls: `SPACE` start, `B` switch bot, `L` pause recording, `Q` quit.
 
 ## Next steps
 - **Web version:** port the game to JavaScript with MediaPipe in the browser and the models exported to ONNX, so it runs from a link.
-- **Adaptive difficulty:** the bot adjusts its passes to how well the player is doing.
 - **More gameplay data** from different players, and DAgger-style training for the imitation bot.
 
 ## Tech
