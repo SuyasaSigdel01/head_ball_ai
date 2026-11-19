@@ -41,6 +41,7 @@ from data_logger import GameLogger
 from bots import RuleBot, MLBot, RLBot
 
 BOT_ORDER = ["RULE", "ML", "RL"]
+RALLY_TARGET = 5          # rallies above this -> bot gets harder
 BOT_CLASSES = {"RULE": RuleBot, "ML": MLBot, "RL": RLBot}
 LOAD_ERRORS = (ImportError, OSError, ValueError, RuntimeError)
 
@@ -107,6 +108,7 @@ def main():
     human_last_hit = 0.0
     msg, msg_until = "", 0.0
     rallies = {name: [] for name in BOT_ORDER}   # finished rally lengths per bot
+    difficulty = 0.7          # starts medium, adjusts after each rally
 
     running = True
     while running:
@@ -181,6 +183,11 @@ def main():
                 if dropped:
                     who = "YOU" if ball.x < mid else "BOT"
                     msg, msg_until = f"{who} DROPPED IT  -  rally {rally}", now + 1.5
+                    if rally >= RALLY_TARGET:
+                        difficulty = min(1.0, difficulty + 0.05)
+                    else:
+                        difficulty = max(0.2, difficulty - 0.05)
+                    bot.difficulty = difficulty
                     rallies[bot.name].append(rally)
                     rally, last_touch = 0, None
                     ball = spawn_on_human_side(W, H)
@@ -196,6 +203,14 @@ def main():
             ball.draw(screen)
 
         draw_text(screen, font, f"RALLY {rally}", (16, 12), ORANGE)
+        diff_pct = int(difficulty * 100)
+        if difficulty < 0.45:
+            dlabel, dcol = "EASY", GREEN
+        elif difficulty < 0.75:
+            dlabel, dcol = "MEDIUM", YELLOW
+        else:
+            dlabel, dcol = "HARD", RED
+        draw_text(screen, font_small, f"DIFF {diff_pct}% ({dlabel})", (16, 84), dcol)
         draw_text(screen, font, f"BEST {best}", (16, 48), YELLOW)
         draw_text(screen, font, "YOU", (W // 4, 20), WHITE, center=True)
         draw_text(screen, font, f"{bot.name} BOT", (3 * W // 4, 20), bot.color, center=True)

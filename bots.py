@@ -11,6 +11,7 @@ same try_header() physics. Only the "brain" differs, so comparing them is fair.
 
 import math
 import os
+import random
 
 import pygame
 
@@ -40,7 +41,8 @@ class RuleBot:
 
     name = "RULE"
 
-    def __init__(self, W, H):
+    def __init__(self, W, H, difficulty=0.7):
+        self.difficulty = difficulty
         self.W, self.H = W, H
         self.mid = W / 2
         self.x = W * BOT_HOME_FX
@@ -73,7 +75,8 @@ class RuleBot:
         disc = vy0 * vy0 - 2 * GRAVITY * (y0 - y1)
         t = (-vy0 + math.sqrt(max(disc, 0.0))) / GRAVITY
         vx_needed = (tx - from_x) / t
-        return max(-1.0, min(-0.15, vx_needed / STEER))
+        noise = (1.0 - self.difficulty) * random.uniform(-0.4, 0.4)
+        return max(-1.0, min(1.0, vx_needed / STEER + noise))
 
     # -- 3. move ------------------------------------------------------------
     def update(self, dt, ball, human_head):
@@ -92,7 +95,7 @@ class RuleBot:
             target = land_x - offset * HEAD_R
 
         target = max(self.mid + HEAD_R * 0.5, min(self.W - HEAD_R, target))
-        step = BOT_SPEED * dt
+        step = BOT_SPEED * self.difficulty * dt
         self.x += max(-step, min(step, target - self.x))
         return self.x, self.y
 
