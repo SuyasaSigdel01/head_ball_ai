@@ -129,6 +129,7 @@ def main():
                     if new.name == bot.name:
                         msg, msg_until = "NO ML/RL MODELS YET - train them first", time.perf_counter() + 2
                     else:
+                        bot=new
                         bot.difficulty = difficulty
                         rally, last_touch = 0, None          # fresh rally for a fair count
                         ball = spawn_on_human_side(W, H)
