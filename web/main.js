@@ -1,5 +1,5 @@
 import { HeadTracker } from "./tracker.js";
-import { Ball, BALL_R, HEAD_R, MAX_DT } from "./physics.js";   // NEW
+import { Ball, BALL_R, HEAD_R, MAX_DT, HIT_COOLDOWN, tryHeader } from "./physics.js";   // NEW
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -8,7 +8,8 @@ const W = canvas.width, H = canvas.height;
 
 let tracker = null;
 let ball = null;                                               // NEW
-let lastTime = 0;                                              // NEW
+let lastTime = 0;
+let humanLastHit = 0;                                           // NEW
 
 // like random.uniform(a, b) in Python                         // NEW
 function uniform(a, b) {
@@ -56,7 +57,11 @@ function loop(time) {                                          // NEW: browser p
   const head = tracker.update(video, W, H);
 
   if (head) {
-    ball.step(dt, W);                                          // NEW
+    ball.step(dt, W);       
+    const now = performance.now() / 1000;
+    if (now - humanLastHit > HIT_COOLDOWN && tryHeader(ball, head, tracker.velocity())) {
+      humanLastHit = now;
+    }                                   // NEW
     if (ball.y - BALL_R > H) ball = spawnOnHumanSide();        // NEW: fell off the bottom
 
     ctx.strokeStyle = "rgb(60, 220, 120)";

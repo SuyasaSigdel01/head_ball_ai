@@ -62,3 +62,30 @@ export class Ball {
     ctx.stroke();
   }
 }
+
+// Bounce the ball off a head if they touch. Returns true on a hit.
+// Shared by the human and the bot, so the physics are identical for both.
+// Cooldown is NOT checked here: each player keeps its own lastHit time.
+export function tryHeader(ball, headPos, headVel) {
+  // 1. distance between ball centre and head centre
+  const dx = ball.x - headPos[0];
+  const dy = ball.y - headPos[1];
+  const dist = Math.hypot(dx, dy);
+
+  // 2. no contact, or ball going up (already headed) -> no hit
+  if (dist >= BALL_R + HEAD_R || ball.vy <= 0) return false;
+
+  // 3. sideways aim from off-centre contact, power from upward head speed
+  const offset = Math.max(-1, Math.min(1, dx / HEAD_R));
+  ball.vx = offset * STEER;
+  const bonus = Math.min(Math.max(-headVel[1], 0) * POWER_GAIN, MAX_POWER_BONUS);
+  ball.vy = -(BASE_BOUNCE + bonus);
+
+  // 4. push the ball just outside the head so they don't overlap next frame
+  const d = Math.max(dist, 1e-3);
+  ball.x = headPos[0] + (dx / d) * (BALL_R + HEAD_R + 1);
+  ball.y = headPos[1] + (dy / d) * (BALL_R + HEAD_R + 1);
+
+  ball.headed = true;
+  return true;
+}
