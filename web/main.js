@@ -1,9 +1,13 @@
+import { HeadTracker } from "./tracker.js";            // NEW
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const video = document.getElementById("cam");
 const W = canvas.width, H = canvas.height;
+const HEAD_R = 62;                                       // NEW (moves to physics.js later)
 
-// 1. ask the browser for the webcam (like cv2.VideoCapture)
+let tracker = null;                                      // NEW
+
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { width: 1280, height: 720 },
@@ -13,7 +17,6 @@ async function startCamera() {
   await video.play();
 }
 
-// 2. draw the frame mirrored (like cv2.flip(frame, 1))
 function drawFrame() {
   ctx.save();
   ctx.translate(W, 0);
@@ -22,17 +25,40 @@ function drawFrame() {
   ctx.restore();
 }
 
-// 3. game loop: the browser calls this ~60 times a second (like while running:)
+function drawText(text, x, y, color, size = 30) {      // NEW (like draw_text in Python)
+  ctx.font = `bold ${size}px Consolas, monospace`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "black";
+  ctx.fillText(text, x + 2, y + 2);                      // shadow
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
 function loop() {
   drawFrame();
+
+  const head = tracker.update(video, W, H);             // NEW
+  if (head) {
+    ctx.strokeStyle = "rgb(60, 220, 120)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(head[0], head[1], HEAD_R, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    drawText("FACE NOT DETECTED", W / 2, 70, "rgb(240, 80, 80)");
+  }
+
   requestAnimationFrame(loop);
 }
 
-startCamera()
-  .then(loop)
-  .catch((err) => {
-    ctx.fillStyle = "red";
-    ctx.font = "bold 30px Consolas, monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("Camera error: " + err.message, W / 2, H / 2);
-  });
+async function start() {                                // NEW
+  await startCamera();
+  drawFrame();
+  drawText("LOADING FACE TRACKER...", W / 2, H / 2, "orange");
+  tracker = await HeadTracker.create();
+  loop();
+}
+
+start().catch((err) => {
+  drawText("Error: " + err.message, W / 2, H / 2, "red");
+});
