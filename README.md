@@ -76,7 +76,7 @@ Each frame it copies the ball, simulates its future with the game's own physics,
 | ![bc](reports/bc_training.png) | ![rl](reports/rl_training.png) |
 
 ### 4. Adaptive difficulty (pass mode, rule bot)
-Difficulty (0-100%) sets how far from your head the bot aims its passes: at 0% the ball lands on your head, at 100% about 160 px away, so you have to move for it. It goes up 10% each time the rally reaches 5, 10, 15..., and down 10% when *you* drop the ball. A bot drop changes nothing.
+Difficulty (0-100%) sets how far from your head the bot aims its passes: at 0% the ball lands on your head, at 100% about 260 px away, so you have to move for it. It goes up 10% each time the rally reaches 5, 10, 15..., and down 10% when *you* drop the ball. A bot drop changes nothing.
 
 The bot always moves at full speed. A first version slowed the bot down instead, which made it drop more, which lowered the difficulty further: a death spiral.
 
