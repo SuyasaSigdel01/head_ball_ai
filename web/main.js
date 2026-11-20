@@ -1,22 +1,23 @@
 import { HeadTracker } from "./tracker.js";
-import { Ball, BALL_R, HEAD_R, MAX_DT, HIT_COOLDOWN, tryHeader } from "./physics.js";   // NEW
+import { Ball, BALL_R, HEAD_R, MAX_DT, HIT_COOLDOWN, tryHeader } from "./physics.js";
+import { RuleBot } from "./bot.js";                                    // NEW
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const video = document.getElementById("cam");
 const W = canvas.width, H = canvas.height;
+const mid = W / 2;                                                     // NEW
 
 let tracker = null;
-let ball = null;                                               // NEW
+let ball = null;
+let bot = null;                                                        // NEW
 let lastTime = 0;
-let humanLastHit = 0;                                           // NEW
+let humanLastHit = 0;
 
-// like random.uniform(a, b) in Python                         // NEW
 function uniform(a, b) {
   return a + Math.random() * (b - a);
 }
 
-// same as spawn_on_human_side() in pass_game.py               // NEW
 function spawnOnHumanSide() {
   const b = new Ball(W * uniform(0.18, 0.32), H * 0.12);
   b.vx = uniform(-30, 30);
@@ -49,22 +50,45 @@ function drawText(text, x, y, color, size = 30) {
   ctx.fillText(text, x, y);
 }
 
-function loop(time) {                                          // NEW: browser passes the time
-  const dt = Math.min((time - lastTime) / 1000, MAX_DT);       // NEW: like clock.tick()
-  lastTime = time;                                             // NEW
+function drawMidline() {                                               // NEW
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([14, 14]);
+  ctx.beginPath();
+  ctx.moveTo(mid, 0);
+  ctx.lineTo(mid, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function loop(time) {
+  const dt = Math.min((time - lastTime) / 1000, MAX_DT);
+  lastTime = time;
 
   drawFrame();
+  drawMidline();                                                       // NEW
   const head = tracker.update(video, W, H);
 
   if (head) {
-    ball.step(dt, W);       
+    ball.step(dt, W);
     const now = performance.now() / 1000;
-    if (now - humanLastHit > HIT_COOLDOWN && tryHeader(ball, head, tracker.velocity())) {
-      humanLastHit = now;
-    }                                   // NEW
-    if (ball.y - BALL_R > H) ball = spawnOnHumanSide();        // NEW: fell off the bottom
 
-    ctx.strokeStyle = "rgb(60, 220, 120)";
+    // you: only count while on the LEFT half                          // CHANGED
+    if (head[0] < mid && now - humanLastHit > HIT_COOLDOWN
+        && tryHeader(ball, head, tracker.velocity())) {
+      humanLastHit = now;
+    }
+
+    // bot: same tryHeader(), same physics as you                      // NEW
+    const botPos = bot.update(dt, ball, head);
+    if (now - bot.lastHit > HIT_COOLDOWN && tryHeader(ball, botPos, bot.velocity())) {
+      bot.lastHit = now;
+    }
+
+    if (ball.y - BALL_R > H) ball = spawnOnHumanSide();
+
+    // green on your side, red if you cross the line                   // CHANGED
+    ctx.strokeStyle = head[0] < mid ? "rgb(60, 220, 120)" : "rgb(240, 80, 80)";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(head[0], head[1], HEAD_R, 0, Math.PI * 2);
@@ -73,7 +97,8 @@ function loop(time) {                                          // NEW: browser p
     drawText("FACE NOT DETECTED", W / 2, 70, "rgb(240, 80, 80)");
   }
 
-  ball.draw(ctx);                                              // NEW
+  bot.draw(ctx, ball);                                                 // NEW
+  ball.draw(ctx);
   requestAnimationFrame(loop);
 }
 
@@ -82,9 +107,10 @@ async function start() {
   drawFrame();
   drawText("LOADING FACE TRACKER...", W / 2, H / 2, "orange");
   tracker = await HeadTracker.create();
-  ball = spawnOnHumanSide();                                   // NEW
-  lastTime = performance.now();                                // NEW
-  requestAnimationFrame(loop);                                 // NEW (was loop())
+  ball = spawnOnHumanSide();
+  bot = new RuleBot(W, H);                                             // NEW
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
 }
 
 start().catch((err) => {
