@@ -141,12 +141,36 @@ Controls: `SPACE` start, `B` switch bot, `L` pause recording, `Q` quit.
 
 ---
 
+## Web version
+
+The pass mode also runs in the browser, with nothing to install: MediaPipe's face landmarker runs inside the page, and the game is drawn on an HTML canvas. It uses the same physics numbers as the Python game, and the rule-based bot with adaptive difficulty.
+
+| File | Python equivalent |
+|---|---|
+| `web/physics.js` | `Ball`, `try_header` and constants in `header_game.py` |
+| `web/tracker.js` | `HeadTracker` in `header_game.py` |
+| `web/bot.js` | `RuleBot` in `bots.py` |
+| `web/main.js` | game loop in `pass_game.py` |
+
+Run it locally (browsers only allow the camera on `localhost` or HTTPS):
+
+```bash
+cd web
+python -m http.server 8000
+# then open http://localhost:8000
+```
+
+Every push to `main` that changes `web/` is published to GitHub Pages by a GitHub Actions workflow (`.github/workflows/pages.yml`).
+
+---
+
 ## Next steps
-- **Web version:** port the game to JavaScript with MediaPipe in the browser and the models exported to ONNX, so it runs from a link.
+- **ML and RL bots in the browser:** export the models to ONNX and run them with ONNX Runtime Web, so all three bots can be compared from a link.
+- **Header Hoops in the browser:** port the basketball mode to the web version.
 - **More gameplay data** from different players, and DAgger-style training for the imitation bot.
 
 ## Tech
-Python, PyTorch, Stable-Baselines3 (PPO), Gymnasium, MediaPipe, OpenCV, Pygame, pandas, matplotlib
+Python, PyTorch, Stable-Baselines3 (PPO), Gymnasium, MediaPipe, OpenCV, Pygame, pandas, matplotlib, JavaScript, HTML Canvas, GitHub Actions
 
 ## Team
 Built by :
