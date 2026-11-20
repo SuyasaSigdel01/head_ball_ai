@@ -24,6 +24,7 @@ let rally = 0, best = 0, prevRally = 0;       // NEW
 let lastTouch = null;                         // NEW: "human" / "bot", who headed it last
 let difficulty = 0.3;                         // NEW: start easy
 let msg = "", msgUntil = 0;                   // NEW
+let state = "WAIT";                           // WAIT -> PLAY, like Python
 
 function uniform(a, b) {
   return a + Math.random() * (b - a);
@@ -77,6 +78,26 @@ function setMsg(text, seconds) {              // NEW: like msg, msg_until in Pyt
   msgUntil = performance.now() / 1000 + seconds;
 }
 
+function startRally() {
+  rally = 0;
+  lastTouch = null;
+  ball = spawnOnHumanSide();
+  state = "PLAY";
+}
+
+// SPACE / R start or restart, like Python
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space" || e.key === "r" || e.key === "R") {
+    e.preventDefault();       // stop SPACE from scrolling the page
+    startRally();
+  }
+});
+
+// a click also starts (handy on a laptop touchpad), but only from the start screen
+canvas.addEventListener("click", () => {
+  if (state === "WAIT") startRally();
+});
+
 function drawHud() {                          // NEW
   drawText(`RALLY ${rally}`, 16, 40, ORANGE, 30, "left");
   drawText(`BEST ${best}`, 16, 76, YELLOW, 30, "left");
@@ -101,64 +122,73 @@ function loop(time) {
   drawMidline();
   const head = tracker.update(video, W, H);
 
-  if (head) {
-    ball.step(dt, W);
-    const now = performance.now() / 1000;
+  if (state === "PLAY") {
+    if (!head) {
+      drawText("FACE NOT DETECTED", W / 2, 70, RED);
+    } else {
+      ball.step(dt, W);
+      const now = performance.now() / 1000;
 
-    // you: only count while on the LEFT half
-    if (head[0] < mid && now - humanLastHit > HIT_COOLDOWN
-        && tryHeader(ball, head, tracker.velocity())) {
-      humanLastHit = now;
-      if (lastTouch === "bot") rally += 1;                     // NEW
-      lastTouch = "human";                                     // NEW
-    }
-
-    // bot: same tryHeader(), same physics as you
-    const botPos = bot.update(dt, ball, head);
-    if (now - bot.lastHit > HIT_COOLDOWN && tryHeader(ball, botPos, bot.velocity())) {
-      bot.lastHit = now;
-      if (lastTouch === "human") rally += 1;                   // NEW
-      lastTouch = "bot";                                       // NEW
-    }
-
-    best = Math.max(best, rally);                              // NEW
-
-    // rally just reached 5, 10, 15... -> harder right away    // NEW
-    if (rally !== prevRally && rally > 0 && rally % RALLY_TARGET === 0) {
-      difficulty = Math.min(1.0, difficulty + 0.1);
-      bot.difficulty = difficulty;
-      setMsg(`LEVEL UP!  DIFF ${Math.round(difficulty * 100)}%`, 1.5);
-    }
-    prevRally = rally;
-
-    // ball hit the floor -> rally over                        // CHANGED
-    if (ball.y - BALL_R > H) {
-      const who = ball.x < mid ? "YOU" : "BOT";
-      setMsg(`${who} DROPPED IT  -  rally ${rally}`, 1.5);
-      if (who === "YOU") {
-        difficulty = Math.max(0.0, difficulty - 0.1);         // you dropped it -> easier
-        bot.difficulty = difficulty;
+      // you: only count while on the LEFT half
+      if (head[0] < mid && now - humanLastHit > HIT_COOLDOWN
+          && tryHeader(ball, head, tracker.velocity())) {
+        humanLastHit = now;
+        if (lastTouch === "bot") rally += 1;
+        lastTouch = "human";
       }
-      rally = 0;
-      lastTouch = null;
-      ball = spawnOnHumanSide();
-    }
 
+      // bot: same tryHeader(), same physics as you
+      const botPos = bot.update(dt, ball, head);
+      if (now - bot.lastHit > HIT_COOLDOWN && tryHeader(ball, botPos, bot.velocity())) {
+        bot.lastHit = now;
+        if (lastTouch === "human") rally += 1;
+        lastTouch = "bot";
+      }
+
+      best = Math.max(best, rally);
+
+      // rally just reached 5, 10, 15... -> harder right away
+      if (rally !== prevRally && rally > 0 && rally % RALLY_TARGET === 0) {
+        difficulty = Math.min(1.0, difficulty + 0.1);
+        bot.difficulty = difficulty;
+        setMsg(`LEVEL UP!  DIFF ${Math.round(difficulty * 100)}%`, 1.5);
+      }
+      prevRally = rally;
+
+      // ball hit the floor -> rally over
+      if (ball.y - BALL_R > H) {
+        const who = ball.x < mid ? "YOU" : "BOT";
+        setMsg(`${who} DROPPED IT  -  rally ${rally}`, 1.5);
+        if (who === "YOU") {
+          difficulty = Math.max(0.0, difficulty - 0.1);
+          bot.difficulty = difficulty;
+        }
+        rally = 0;
+        lastTouch = null;
+        ball = spawnOnHumanSide();
+      }
+    }
+  }
+
+  // ---------------- draw ----------------
+  if (head) {
     ctx.strokeStyle = head[0] < mid ? GREEN : RED;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(head[0], head[1], HEAD_R, 0, Math.PI * 2);
     ctx.stroke();
-  } else {
-    drawText("FACE NOT DETECTED", W / 2, 70, RED);
+  }
+  bot.draw(ctx, ball);
+  if (state === "PLAY") ball.draw(ctx);
+  drawHud();
+
+  if (state === "WAIT") {
+    drawText("HEADER PASS", W / 2, H / 2 - 40, ORANGE, 60);
+    drawText("stand on the LEFT  -  SPACE or click to start", W / 2, H / 2 + 20, "white");
   }
 
-  bot.draw(ctx, ball);
-  ball.draw(ctx);
-  drawHud();                                                   // NEW
   requestAnimationFrame(loop);
 }
-
 async function start() {
   await startCamera();
   drawFrame();
