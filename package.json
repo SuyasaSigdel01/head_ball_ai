@@ -1,0 +1,27 @@
+{
+  "name": "football",
+  "version": "1.0.0",
+  "description": "A webcam heading game where you pass a ball back and forth with an AI partner, using only your head. MediaPipe tracks your forehead, and three bots take the other side of the court:",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuyasaSigdel01/head_ball_ai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/SuyasaSigdel01/head_ball_ai/issues"
+  },
+  "homepage": "https://github.com/SuyasaSigdel01/head_ball_ai#readme",
+  "dependencies": {
+    "@capacitor/core": "^8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2"
+  }
+}
