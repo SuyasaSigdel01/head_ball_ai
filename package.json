@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/SuyasaSigdel01/head_ball_ai#readme",
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
     "@capacitor/core": "^8.6.2"
   },
   "devDependencies": {
