@@ -100,9 +100,17 @@ function setMsg(text, seconds) {
     msg = text;
     msgUntil = performance.now() / 1000 + seconds;
 }
-
+// keep the screen on while playing (for the website; the Android app does it natively)
+async function keepScreenOn() {
+    try {
+        if ("wakeLock" in navigator) await navigator.wakeLock.request("screen");
+    } catch (err) {
+        // not supported or not allowed: the game still works, the screen may just dim
+    }
+}
 // ---------------- starting a mode ----------------
 function startPass() { // CHANGED: was startRally
+    keepScreenOn();
     mode = "PASS";
     rally = 0;
     lastTouch = null;
@@ -111,6 +119,7 @@ function startPass() { // CHANGED: was startRally
 }
 
 function startHoops() { // NEW
+    keepScreenOn();
     mode = "HOOPS";
     score = 0;
     timeLeft = GAME_TIME;
@@ -226,9 +235,13 @@ function drawPassHud() { // CHANGED: was drawHud
     const pct = Math.round(difficulty * 100);
     let label = "HARD",
         col = RED;
-    if (difficulty < 0.45) { label = "EASY";
-        col = GREEN; } else if (difficulty < 0.75) { label = "MEDIUM";
-        col = YELLOW; }
+    if (difficulty < 0.45) {
+        label = "EASY";
+        col = GREEN;
+    } else if (difficulty < 0.75) {
+        label = "MEDIUM";
+        col = YELLOW;
+    }
     drawText(`DIFF ${pct}% (${label})`, 16, 108, col, 22, "left");
 
     drawText("YOU", W / 4, 40, "white");
