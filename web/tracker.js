@@ -43,7 +43,11 @@ export class HeadTracker {
         }
 
         const lm = res.faceLandmarks[0][FOREHEAD_LM];
-        this.history.push([(1 - lm.x) * W, lm.y * H]); // 1 - x = mirror, like cv2.flip
+        // landmark -> camera pixels (mirrored) -> canvas pixels, after the crop
+        const c = coverCrop(video, W, H);
+        const px = (1 - lm.x) * video.videoWidth;
+        const py = lm.y * video.videoHeight;
+        this.history.push([((px - c.sx) / c.sw) * W, ((py - c.sy) / c.sh) * H]);
         if (this.history.length > SMOOTH_N) this.history.shift();
 
         const sx = this.history.reduce((s, p) => s + p[0], 0) / this.history.length;
@@ -63,4 +67,16 @@ export class HeadTracker {
         const dt = t1 - t0;
         return dt <= 1e-4 ? [0, 0] : [(x1 - x0) / dt, (y1 - y0) / dt];
     }
+}
+// which part of the camera frame fills the 16:9 canvas (crop, don't stretch)
+export function coverCrop(video, W, H) {
+    const vw = video.videoWidth,
+        vh = video.videoHeight;
+    const target = W / H;
+    if (vw / vh > target) { // camera is wider: cut the sides
+        const sw = vh * target;
+        return { sx: (vw - sw) / 2, sy: 0, sw, sh: vh };
+    }
+    const sh = vw / target; // camera is taller (e.g. 4:3): cut top and bottom
+    return { sx: 0, sy: (vh - sh) / 2, sw: vw, sh };
 }
