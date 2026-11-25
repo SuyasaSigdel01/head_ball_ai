@@ -266,7 +266,7 @@ window.addEventListener("keydown", (e) => {
         function drawHoopsHud() {
             drawText(`BASKETS ${score}`, 16, 40, ORANGE, 30, "left");
             drawText(`BEST ${hoopsBest}`, 16, 76, YELLOW, 30, "left");
-            if (state === "PLAY") {
+            if (state !== "OVER") {
                 const col = timeLeft < 10 ? RED : "white";
                 drawText(`${timeLeft.toFixed(1).padStart(4, "0")}s`, W - 16, 40, col, 30, "right");
             }
@@ -305,7 +305,7 @@ window.addEventListener("keydown", (e) => {
             } else {
                 hoop.draw(ctx);
                 if (head) drawHead(head, GREEN);
-                if (state === "PLAY") ball.draw(ctx);
+                if (state !== "OVER") ball.draw(ctx);
                 drawHoopsHud();
                 if (state === "OVER") {
                     drawText(`${score} BASKETS`, W / 2, H / 2 - 40, ORANGE, 60);
