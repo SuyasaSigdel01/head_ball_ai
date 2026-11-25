@@ -168,7 +168,10 @@ window.addEventListener("keydown", (e) => {
                 togglePause(); // tap while playing = pause, tap again = resume
             }
         });
-
+        // switching tab or leaving the app -> pause, so you don't come back to a lost rally
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden && state === "PLAY") state = "PAUSED";
+        });
         // ---------------- game logic ----------------
         function updatePass(dt, head) {
             ball.step(dt, W);
